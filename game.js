@@ -7,6 +7,8 @@ let x = 50;
 let y = canvas.height - playerHeight-10;
 let vx = 2;
 let gameOver = false;
+let score = 0;
+let bestScore = 0;
 
 let blocks = [];
 let keys = {};
@@ -45,8 +47,43 @@ let player = {
     height: 100
 };
 
+function drawHud() {
+    ctx.fillStyle = "white";
+    ctx.font = "20px Arial";
+    ctx.fillText("Score: " + score, 10, 30);
+
+    ctx.font = "16px Arial";
+    ctx.fillText("Best: " + bestScore, 10, 50);
+}
+
+function resetGame() {
+    blocks = [];
+    score = 0;
+    gameOver = false;
+
+    x = canvas.width / 2 - 50;
+}
+
+function drawGameOver() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "40px Arial";
+    ctx.fillText("GAME OVER", 60, 280);
+
+    ctx.font = "20px Arial";
+    ctx.fillText("Press Enter to Restart", 70, 320);
+}
+
 function loop() {
     if(gameOver){
+        if (keys["Enter"]) {
+            resetGame();
+        }
+
+        drawGameOver();
+        requestAnimationFrame(loop);
         return;
     }
 
@@ -71,10 +108,13 @@ function loop() {
 
         if(isColliding(player, block)){
             gameOver = true;
+            bestScore = Math.max(bestScore, score);
         }
     }
 
     blocks = blocks.filter(block => block.y < canvas.height);
+
+    score++;
 
     ctx.fillStyle = "lime";
     ctx.fillRect(x, y, 100, 100);
@@ -84,16 +124,8 @@ function loop() {
         ctx.fillRect(block.x, block.y, block.width, block.height);
     }
 
-    if(gameOver){
-        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawHud();
 
-        ctx.fillStyle = "white";
-        ctx.font = "bold 48px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
-        ctx.textAlign = "start";
-    }
     requestAnimationFrame(loop);
 }
 

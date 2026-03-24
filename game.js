@@ -36,11 +36,19 @@ const COUNTER_NAMESPACE = "dodge-supanroy-caretgames-v1";
 const COUNTER_TOTAL_PLAYS = "total_plays";
 const COUNTER_TOTAL_MINUTES = "total_play_minutes";
 const LOCAL_STATS_KEY = "dtfb-community-stats-local-v1";
+const STATS_REFRESH_INTERVAL_MS = 30000;
 
 const localStats = {
     plays: 0,
     minutes: 0
 };
+
+const pendingStats = {
+    plays: 0,
+    minutes: 0
+};
+
+let statsSyncInFlight = false;
 
 const sounds = {
     gameStart: new Audio("Sound Effects/game-start.mp3"),
@@ -190,9 +198,23 @@ function updateCommunityStatsUI({ plays, minutes } = {}) {
     }
 }
 
+function renderCommunityStats() {
+    updateCommunityStatsUI({
+        plays: localStats.plays + pendingStats.plays,
+        minutes: localStats.minutes + pendingStats.minutes
+    });
+}
+
 function persistLocalStats() {
     try {
-        localStorage.setItem(LOCAL_STATS_KEY, JSON.stringify(localStats));
+        localStorage.setItem(LOCAL_STATS_KEY, JSON.stringify({
+            plays: localStats.plays,
+            minutes: localStats.minutes,
+            pending: {
+                plays: pendingStats.plays,
+                minutes: pendingStats.minutes
+            }
+        }));
     } catch {
         // Ignore storage limitations.
     }
@@ -207,22 +229,28 @@ function loadLocalStats() {
         if (Number.isFinite(saved?.minutes) && saved.minutes >= 0) {
             localStats.minutes = saved.minutes;
         }
+        if (Number.isFinite(saved?.pending?.plays) && saved.pending.plays >= 0) {
+            pendingStats.plays = saved.pending.plays;
+        }
+        if (Number.isFinite(saved?.pending?.minutes) && saved.pending.minutes >= 0) {
+            pendingStats.minutes = saved.pending.minutes;
+        }
     } catch {
         // Use default local counters.
     }
 }
 
-function incrementLocalStat(key) {
+function incrementPendingStat(key) {
     if (key === "plays") {
-        localStats.plays += 1;
+        pendingStats.plays += 1;
     }
 
     if (key === "minutes") {
-        localStats.minutes += 1;
+        pendingStats.minutes += 1;
     }
 
     persistLocalStats();
-    updateCommunityStatsUI({ plays: localStats.plays, minutes: localStats.minutes });
+    renderCommunityStats();
 }
 
 function setStatFromRemote(key, value) {
@@ -231,15 +259,54 @@ function setStatFromRemote(key, value) {
     }
 
     if (key === "plays") {
-        localStats.plays = Math.max(localStats.plays, value);
+        localStats.plays = value;
     }
 
     if (key === "minutes") {
-        localStats.minutes = Math.max(localStats.minutes, value);
+        localStats.minutes = value;
     }
 
     persistLocalStats();
-    updateCommunityStatsUI({ plays: localStats.plays, minutes: localStats.minutes });
+    renderCommunityStats();
+}
+
+function markPendingSynced(key) {
+    if (key === "plays" && pendingStats.plays > 0) {
+        pendingStats.plays -= 1;
+    }
+
+    if (key === "minutes" && pendingStats.minutes > 0) {
+        pendingStats.minutes -= 1;
+    }
+
+    persistLocalStats();
+    renderCommunityStats();
+}
+
+async function flushPendingStats() {
+    if (statsSyncInFlight) {
+        return;
+    }
+
+    statsSyncInFlight = true;
+
+    try {
+        while (pendingStats.plays > 0) {
+            const plays = await counterHitValue(COUNTER_TOTAL_PLAYS);
+            setStatFromRemote("plays", plays);
+            markPendingSynced("plays");
+        }
+
+        while (pendingStats.minutes > 0) {
+            const minutes = await counterHitValue(COUNTER_TOTAL_MINUTES);
+            setStatFromRemote("minutes", minutes);
+            markPendingSynced("minutes");
+        }
+    } catch {
+        // Keep local queued increments for next sync attempt.
+    } finally {
+        statsSyncInFlight = false;
+    }
 }
 
 async function counterGetValue(key) {
@@ -270,8 +337,9 @@ async function refreshCommunityStats() {
         ]);
         setStatFromRemote("plays", plays);
         setStatFromRemote("minutes", minutes);
+        await flushPendingStats();
     } catch {
-        updateCommunityStatsUI({ plays: localStats.plays, minutes: localStats.minutes });
+        renderCommunityStats();
     }
 }
 
@@ -289,26 +357,14 @@ function ensurePlayMinuteTicker() {
             return;
         }
 
-        incrementLocalStat("minutes");
-
-        try {
-            const minutes = await counterHitValue(COUNTER_TOTAL_MINUTES);
-            setStatFromRemote("minutes", minutes);
-        } catch {
-            // Keep game responsive even if counter service is unavailable.
-        }
+        incrementPendingStat("minutes");
+        await flushPendingStats();
     }, 60000);
 }
 
 async function registerPlayIfNeeded() {
-    incrementLocalStat("plays");
-
-    try {
-        const plays = await counterHitValue(COUNTER_TOTAL_PLAYS);
-        setStatFromRemote("plays", plays);
-    } catch {
-        // Ignore counter failures and continue gameplay.
-    }
+    incrementPendingStat("plays");
+    await flushPendingStats();
 }
 
 function getWeirdSpawnChance() {
@@ -1038,7 +1094,13 @@ updatePlayerMetrics();
 x = canvas.width / 2 - playerWidth / 2;
 updateHud();
 loadLocalStats();
-updateCommunityStatsUI({ plays: localStats.plays, minutes: localStats.minutes });
+renderCommunityStats();
 refreshCommunityStats();
+setInterval(() => {
+    refreshCommunityStats();
+}, STATS_REFRESH_INTERVAL_MS);
+window.addEventListener("online", () => {
+    refreshCommunityStats();
+});
 ensurePlayMinuteTicker();
 loop();

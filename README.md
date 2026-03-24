@@ -1,12 +1,17 @@
 # Dodge The Falling Blocks
 
+[![Play Now](https://img.shields.io/badge/Play-dodge.supanroy.com-0ea5e9?style=for-the-badge&logo=vercel&logoColor=white)](https://dodge.supanroy.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
+[![HTML5](https://img.shields.io/badge/HTML5-e34f26?style=for-the-badge&logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/HTML5)
+[![JavaScript](https://img.shields.io/badge/JavaScript-f7df1e?style=for-the-badge&logo=javascript&logoColor=111111)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+
 ![Dodge The Falling Blocks Banner](docs/banner.svg)
 
 A fast-paced browser arcade game where you dodge falling objects, survive longer, and chase your best score.
 
 ## Play Online
 
-[Play Now: dodge.supanroy.com](https://dodge.supanroy.com)
+Play Now: [dodge.supanroy.com](https://dodge.supanroy.com)
 
 ## Screenshot
 
@@ -53,7 +58,11 @@ A fast-paced browser arcade game where you dodge falling objects, survive longer
 - `game.js` - game logic and rendering
 - `Sound Effects/` - game audio assets
 
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
+
 ## Credits
 
-Made by Jennet Caret Games
+Made by Jennet Caret Games  
 Developed by Supan Roy

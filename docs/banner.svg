@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+  <title id="title">Dodge The Falling Blocks Banner</title>
+  <desc id="desc">Dark atmospheric game banner with glowing shapes and title.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#070b13"/>
+      <stop offset="55%" stop-color="#111b33"/>
+      <stop offset="100%" stop-color="#24123a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#27dcb4"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <filter id="blurGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="360" fill="url(#bg)"/>
+
+  <circle cx="180" cy="85" r="90" fill="#1d5ec9" opacity="0.35" filter="url(#blurGlow)"/>
+  <circle cx="1120" cy="280" r="110" fill="#b24bf0" opacity="0.28" filter="url(#blurGlow)"/>
+
+  <g opacity="0.16" stroke="#a6d7ff" stroke-width="1">
+    <line x1="0" y1="70" x2="1280" y2="70"/>
+    <line x1="0" y1="130" x2="1280" y2="130"/>
+    <line x1="0" y1="190" x2="1280" y2="190"/>
+    <line x1="0" y1="250" x2="1280" y2="250"/>
+    <line x1="0" y1="310" x2="1280" y2="310"/>
+  </g>
+
+  <g transform="translate(110 92)">
+    <rect x="0" y="0" width="70" height="70" rx="12" fill="#0b1f2d" opacity="0.9"/>
+    <path d="M16 22h38L41 48H16z" fill="url(#accent)"/>
+    <circle cx="50" cy="18" r="7" fill="#ff8f4f"/>
+  </g>
+
+  <text x="210" y="145" fill="#edf6ff" font-size="56" font-family="'Sora', 'Segoe UI', sans-serif" font-weight="700" letter-spacing="1.5">DODGE THE FALLING BLOCKS</text>
+  <text x="214" y="192" fill="#9bb3d4" font-size="24" font-family="'Space Grotesk', 'Segoe UI', sans-serif">Fast-paced browser arcade survival game</text>
+
+  <rect x="212" y="222" width="308" height="42" rx="10" fill="#11283a" stroke="#2fd6b0" stroke-opacity="0.42"/>
+  <text x="233" y="250" fill="#d9f7ee" font-size="21" font-family="'Space Grotesk', 'Segoe UI', sans-serif" font-weight="700">Play: dodge.supanroy.com</text>
+</svg>

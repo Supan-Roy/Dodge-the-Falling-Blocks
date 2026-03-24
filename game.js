@@ -8,6 +8,8 @@ const musicToggle = document.getElementById("musicToggle");
 const pauseToggle = document.getElementById("pauseToggle");
 const stopGameButton = document.getElementById("stopGame");
 const difficultyButtons = document.querySelectorAll(".difficulty-btn");
+const totalPlayCountEl = document.getElementById("totalPlayCount");
+const totalPlayMinutesEl = document.getElementById("totalPlayMinutes");
 
 let playerWidth = 100;
 let playerHeight = 100;
@@ -25,9 +27,14 @@ let playerBob = 0;
 let runElapsedMs = 0;
 let lastFrameTime = 0;
 let difficultyLevel = "low";
+let playMinuteCounterId = null;
 
 let blocks = [];
 let keys = {};
+
+const COUNTER_NAMESPACE = "dodge-supanroy-caretgames-v1";
+const COUNTER_TOTAL_PLAYS = "total_plays";
+const COUNTER_TOTAL_MINUTES = "total_play_minutes";
 
 const sounds = {
     gameStart: new Audio("Sound Effects/game-start.mp3"),
@@ -161,6 +168,88 @@ function setDifficulty(level) {
 function pickWeirdType() {
     const weirdTypes = ["crystal", "void", "plasma"];
     return weirdTypes[Math.floor(Math.random() * weirdTypes.length)];
+}
+
+function formatCounterValue(value) {
+    return Number.isFinite(value) ? value.toLocaleString() : "--";
+}
+
+function updateCommunityStatsUI({ plays, minutes } = {}) {
+    if (totalPlayCountEl && plays !== undefined) {
+        totalPlayCountEl.textContent = formatCounterValue(plays);
+    }
+
+    if (totalPlayMinutesEl && minutes !== undefined) {
+        totalPlayMinutesEl.textContent = formatCounterValue(minutes);
+    }
+}
+
+async function counterGetValue(key) {
+    const url = `https://api.countapi.xyz/get/${COUNTER_NAMESPACE}/${key}`;
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error(`Counter get failed: ${response.status}`);
+    }
+    const data = await response.json();
+    return Number.isFinite(data?.value) ? data.value : 0;
+}
+
+async function counterHitValue(key) {
+    const url = `https://api.countapi.xyz/hit/${COUNTER_NAMESPACE}/${key}`;
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error(`Counter hit failed: ${response.status}`);
+    }
+    const data = await response.json();
+    return Number.isFinite(data?.value) ? data.value : 0;
+}
+
+async function refreshCommunityStats() {
+    try {
+        const [plays, minutes] = await Promise.all([
+            counterGetValue(COUNTER_TOTAL_PLAYS),
+            counterGetValue(COUNTER_TOTAL_MINUTES)
+        ]);
+        updateCommunityStatsUI({ plays, minutes });
+    } catch {
+        updateCommunityStatsUI({ plays: undefined, minutes: undefined });
+    }
+}
+
+function isActivePlayState() {
+    return gameStarted && !gamePaused && !gameOver && !gameStopped;
+}
+
+function ensurePlayMinuteTicker() {
+    if (playMinuteCounterId !== null) {
+        return;
+    }
+
+    playMinuteCounterId = setInterval(async () => {
+        if (!isActivePlayState()) {
+            return;
+        }
+
+        try {
+            const minutes = await counterHitValue(COUNTER_TOTAL_MINUTES);
+            if (totalPlayMinutesEl) {
+                totalPlayMinutesEl.textContent = formatCounterValue(minutes);
+            }
+        } catch {
+            // Keep game responsive even if counter service is unavailable.
+        }
+    }, 60000);
+}
+
+async function registerPlayIfNeeded() {
+    try {
+        const plays = await counterHitValue(COUNTER_TOTAL_PLAYS);
+        if (totalPlayCountEl) {
+            totalPlayCountEl.textContent = formatCounterValue(plays);
+        }
+    } catch {
+        // Ignore counter failures and continue gameplay.
+    }
 }
 
 function getWeirdSpawnChance() {
@@ -538,6 +627,8 @@ function resetGame() {
     updateStartOverlayButton();
     updatePauseButton();
     updateHud();
+    ensurePlayMinuteTicker();
+    registerPlayIfNeeded();
 }
 
 function drawStartOverlay() {
@@ -887,4 +978,6 @@ setDifficulty("low");
 updatePlayerMetrics();
 x = canvas.width / 2 - playerWidth / 2;
 updateHud();
+refreshCommunityStats();
+ensurePlayMinuteTicker();
 loop();

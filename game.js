@@ -1,35 +1,301 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const scoreValue = document.getElementById("scoreValue");
+const bestScoreValue = document.getElementById("bestScoreValue");
+const startOverlayButton = document.getElementById("startOverlayButton");
+const musicToggle = document.getElementById("musicToggle");
+const pauseToggle = document.getElementById("pauseToggle");
+const stopGameButton = document.getElementById("stopGame");
 
 let playerWidth = 100;
 let playerHeight = 100;
 let x = 50;
 let y = canvas.height - playerHeight-10;
-let vx = 2;
+let playerSpeed = 5;
 let gameOver = false;
+let gamePaused = false;
+let gameStopped = false;
+let gameStarted = false;
 let score = 0;
 let bestScore = 0;
+let musicEnabled = true;
+let playerBob = 0;
 
 let blocks = [];
 let keys = {};
 
+const sounds = {
+    gameStart: new Audio("Sound Effects/game-start.mp3"),
+    gameOver: new Audio("Sound Effects/game-over.mp3"),
+    hit: new Audio("Sound Effects/hit-sound.mp3"),
+    running: new Audio("Sound Effects/running.mp3")
+};
+
+const fireballThemes = [
+    {
+        tail: ["rgba(255, 174, 66, 0.72)", "rgba(255, 104, 24, 0.48)", "rgba(255, 80, 16, 0)"],
+        core: ["#fff3bf", "#ffc04d", "#ff7131", "#ab2714"],
+        glow: "rgba(255, 106, 31, 0.55)",
+        highlight: "rgba(255, 251, 229, 0.56)",
+        ring: "rgba(255, 220, 155, 0.7)"
+    },
+    {
+        tail: ["rgba(142, 228, 255, 0.75)", "rgba(64, 181, 255, 0.5)", "rgba(34, 112, 255, 0)"],
+        core: ["#eaffff", "#98e8ff", "#4ab8ff", "#1f5ec7"],
+        glow: "rgba(67, 183, 255, 0.62)",
+        highlight: "rgba(232, 250, 255, 0.58)",
+        ring: "rgba(168, 236, 255, 0.78)"
+    },
+    {
+        tail: ["rgba(171, 255, 165, 0.74)", "rgba(96, 231, 121, 0.5)", "rgba(39, 170, 89, 0)"],
+        core: ["#ecffe9", "#b7ff9f", "#5fdf74", "#1c9146"],
+        glow: "rgba(95, 223, 116, 0.62)",
+        highlight: "rgba(234, 255, 229, 0.6)",
+        ring: "rgba(188, 255, 170, 0.78)"
+    },
+    {
+        tail: ["rgba(219, 169, 255, 0.74)", "rgba(165, 101, 255, 0.5)", "rgba(108, 63, 208, 0)"],
+        core: ["#f7ebff", "#d1a7ff", "#9a69ff", "#5f32bd"],
+        glow: "rgba(154, 105, 255, 0.62)",
+        highlight: "rgba(244, 232, 255, 0.58)",
+        ring: "rgba(220, 185, 255, 0.8)"
+    },
+    {
+        tail: ["rgba(255, 139, 139, 0.73)", "rgba(255, 62, 81, 0.52)", "rgba(170, 23, 48, 0)"],
+        core: ["#ffe8e8", "#ff9ea0", "#ff4660", "#8f1630"],
+        glow: "rgba(255, 70, 96, 0.62)",
+        highlight: "rgba(255, 238, 238, 0.56)",
+        ring: "rgba(255, 183, 193, 0.8)"
+    },
+    {
+        tail: ["rgba(255, 242, 145, 0.78)", "rgba(255, 204, 75, 0.56)", "rgba(215, 149, 20, 0)"],
+        core: ["#fff9dd", "#ffe88d", "#ffc948", "#b07000"],
+        glow: "rgba(255, 201, 72, 0.65)",
+        highlight: "rgba(255, 252, 229, 0.62)",
+        ring: "rgba(255, 230, 150, 0.82)"
+    },
+    {
+        tail: ["rgba(255, 255, 255, 0.4)", "rgba(114, 234, 255, 0.5)", "rgba(41, 165, 210, 0)"],
+        core: ["#fbffff", "#d7f6ff", "#72e9ff", "#257f96"],
+        glow: "rgba(137, 245, 255, 0.7)",
+        highlight: "rgba(255, 255, 255, 0.78)",
+        ring: "rgba(180, 245, 255, 0.86)"
+    }
+];
+
+function getFireballThemePhase(currentScore) {
+    if (currentScore >= 10000) return 6;
+    if (currentScore >= 8000) return 5;
+    if (currentScore >= 5000) return 4;
+    if (currentScore >= 3000) return 3;
+    if (currentScore >= 2000) return 2;
+    if (currentScore >= 1000) return 1;
+    return 0;
+}
+
+function pickFireballThemeIndex(currentScore) {
+    const phase = getFireballThemePhase(currentScore);
+
+    // Most spawns use the current phase style; occasionally use another unlocked style.
+    if (phase > 0 && Math.random() < 0.15) {
+        let alt = Math.floor(Math.random() * (phase + 1));
+        if (alt === phase) {
+            alt = (alt + 1) % (phase + 1);
+        }
+        return alt;
+    }
+
+    return phase;
+}
+
+sounds.running.loop = true;
+sounds.running.volume = 0.35;
+sounds.gameOver.volume = 0.65;
+sounds.hit.volume = 0.75;
+
+function playSound(sound, restart = true) {
+    if (!musicEnabled) {
+        return;
+    }
+
+    if (restart) {
+        sound.currentTime = 0;
+    }
+
+    sound.play().catch(() => {
+        // Browser autoplay policies may block sound until user interaction.
+    });
+}
+
+function startRunAudio() {
+    if (!musicEnabled || !gameStarted || gameOver || gamePaused || gameStopped) {
+        return;
+    }
+
+    playSound(sounds.running, false);
+}
+
+function stopRunAudio() {
+    sounds.running.pause();
+}
+
+function updateMusicButton() {
+    musicToggle.textContent = musicEnabled ? "🔊" : "🔇";
+}
+
+function updatePauseButton() {
+    pauseToggle.classList.toggle("show-play", gamePaused);
+}
+
+function updateStartOverlayButton() {
+    startOverlayButton.style.display = gameStarted ? "none" : "block";
+}
+
+function updateHud() {
+    scoreValue.textContent = score;
+    bestScoreValue.textContent = bestScore;
+}
+
+function pulseScore() {
+    scoreValue.classList.remove("pulse");
+    void scoreValue.offsetWidth;
+    scoreValue.classList.add("pulse");
+}
+
+function togglePauseState() {
+    if (!gameStarted || gameOver || gameStopped) {
+        return;
+    }
+
+    gamePaused = !gamePaused;
+    updatePauseButton();
+
+    if (gamePaused) {
+        stopRunAudio();
+    } else {
+        startRunAudio();
+    }
+}
+
+function handleStartPauseToggle() {
+    if (!gameStarted || gameStopped || gameOver) {
+        resetGame();
+        return;
+    }
+
+    togglePauseState();
+}
+
+function getCanvasXFromTouch(touch) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    return (touch.clientX - rect.left) * scaleX;
+}
+
+function movePlayerToCanvasX(canvasX) {
+    x = Math.max(0, Math.min(canvas.width - playerWidth, canvasX - playerWidth / 2));
+}
+
+musicToggle.addEventListener("click", () => {
+    musicEnabled = !musicEnabled;
+    updateMusicButton();
+
+    if (musicEnabled) {
+        startRunAudio();
+    } else {
+        stopRunAudio();
+    }
+});
+
+startOverlayButton.addEventListener("click", () => {
+    resetGame();
+});
+
+pauseToggle.addEventListener("click", () => {
+    togglePauseState();
+});
+
+stopGameButton.addEventListener("click", () => {
+    if (!gameStarted) {
+        return;
+    }
+
+    gameStopped = true;
+    gameStarted = false;
+    gamePaused = false;
+    gameOver = false;
+    stopRunAudio();
+    blocks = [];
+    score = 0;
+    updateHud();
+    updatePauseButton();
+    updateStartOverlayButton();
+});
+
 function spawnBlock() {
+    const size = 26 + Math.random() * 20;
+    const radius = size / 2;
+    const themeIndex = pickFireballThemeIndex(score);
+
     blocks.push({
-        x: Math.random() * (canvas.width-30),
-        y: -30,
-        width: 30,
-        height: 30,
-        speed: 3
+        x: Math.random() * (canvas.width - size),
+        y: -size,
+        width: size,
+        height: size,
+        radius,
+        speed: Math.min(6.6, 2 + score / 480),
+        rotation: Math.random() * Math.PI * 2,
+        spin: (Math.random() - 0.5) * 0.04,
+        themeIndex
     });
 }
 
 document.addEventListener("keydown", (e) => {
+    const isEnter = e.key === "Enter";
+    const isSpace = e.code === "Space";
+
+    if (isEnter || isSpace) {
+        e.preventDefault();
+        if (!e.repeat) {
+            handleStartPauseToggle();
+        }
+        return;
+    }
+
     keys[e.key] = true;
 });
 
 document.addEventListener("keyup", (e) => {
     keys[e.key] = false;
 });
+
+canvas.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 0) {
+        return;
+    }
+
+    e.preventDefault();
+
+    if (!gameStarted || gamePaused || gameStopped || gameOver) {
+        handleStartPauseToggle();
+        return;
+    }
+
+    movePlayerToCanvasX(getCanvasXFromTouch(e.touches[0]));
+}, { passive: false });
+
+canvas.addEventListener("touchmove", (e) => {
+    if (e.touches.length === 0) {
+        return;
+    }
+
+    if (!gameStarted || gamePaused || gameStopped || gameOver) {
+        return;
+    }
+
+    e.preventDefault();
+    movePlayerToCanvasX(getCanvasXFromTouch(e.touches[0]));
+}, { passive: false });
 
 function isColliding(a, b){
     return (
@@ -43,45 +309,315 @@ function isColliding(a, b){
 let player = {
     x: x,
     y: y,
-    width: 100,
-    height: 100
+    width: playerWidth,
+    height: playerHeight
 };
 
-function drawHud() {
-    ctx.fillStyle = "white";
-    ctx.font = "20px Arial";
-    ctx.fillText("Score: " + score, 10, 30);
+function updatePlayerMetrics() {
+    playerWidth = Math.max(46, Math.min(74, canvas.width * 0.16));
+    playerHeight = Math.max(20, Math.min(30, canvas.height * 0.05));
+    playerSpeed = Math.max(3.8, canvas.width * 0.0125);
+    y = canvas.height - playerHeight - 12;
 
-    ctx.font = "16px Arial";
-    ctx.fillText("Best: " + bestScore, 10, 50);
+    x = Math.min(Math.max(0, x), canvas.width - playerWidth);
+
+    player.width = playerWidth;
+    player.height = playerHeight;
+    player.y = y;
+}
+
+function getLargestHorizontalGap(intervals, width) {
+    if (intervals.length === 0) {
+        return { start: 0, end: width, size: width };
+    }
+
+    const sorted = intervals
+        .map((segment) => ({
+            start: Math.max(0, segment.start),
+            end: Math.min(width, segment.end)
+        }))
+        .filter((segment) => segment.end > segment.start)
+        .sort((a, b) => a.start - b.start);
+
+    if (sorted.length === 0) {
+        return { start: 0, end: width, size: width };
+    }
+
+    const merged = [];
+    for (const segment of sorted) {
+        const last = merged[merged.length - 1];
+        if (!last || segment.start > last.end) {
+            merged.push({ ...segment });
+        } else {
+            last.end = Math.max(last.end, segment.end);
+        }
+    }
+
+    let best = { start: 0, end: merged[0].start, size: merged[0].start };
+    let previousEnd = merged[0].end;
+
+    for (let i = 1; i < merged.length; i++) {
+        const gapStart = previousEnd;
+        const gapEnd = merged[i].start;
+        const gapSize = gapEnd - gapStart;
+        if (gapSize > best.size) {
+            best = { start: gapStart, end: gapEnd, size: gapSize };
+        }
+        previousEnd = Math.max(previousEnd, merged[i].end);
+    }
+
+    if (width - previousEnd > best.size) {
+        best = { start: previousEnd, end: width, size: width - previousEnd };
+    }
+
+    return best;
+}
+
+function ensureEscapeLane() {
+    const requiredGap = playerWidth + 18;
+    const dangerTop = player.y - 170;
+    const dangerBottom = player.y + player.height + 20;
+    const dangerBlocks = blocks.filter(
+        (block) => block.y + block.height >= dangerTop && block.y <= dangerBottom
+    );
+
+    if (dangerBlocks.length === 0) {
+        return;
+    }
+
+    const intervals = dangerBlocks.map((block) => ({
+        start: block.x,
+        end: block.x + block.width
+    }));
+
+    const largestGap = getLargestHorizontalGap(intervals, canvas.width);
+    if (largestGap.size >= requiredGap) {
+        return;
+    }
+
+    const gapStart = Math.min(
+        Math.max(x + playerWidth / 2 - requiredGap / 2, 0),
+        canvas.width - requiredGap
+    );
+    const gapEnd = gapStart + requiredGap;
+    const gapCenter = (gapStart + gapEnd) / 2;
+
+    for (const block of dangerBlocks) {
+        const blockStart = block.x;
+        const blockEnd = block.x + block.width;
+
+        if (blockEnd <= gapStart || blockStart >= gapEnd) {
+            continue;
+        }
+
+        const shiftLeft = blockEnd - gapStart + 2;
+        const shiftRight = gapEnd - blockStart + 2;
+
+        if (block.x + block.width / 2 < gapCenter) {
+            block.x -= shiftLeft;
+        } else {
+            block.x += shiftRight;
+        }
+
+        block.x = Math.max(0, Math.min(canvas.width - block.width, block.x));
+    }
+}
+
+function drawHud() {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function resetGame() {
     blocks = [];
     score = 0;
+    gameStarted = true;
     gameOver = false;
+    gamePaused = false;
+    gameStopped = false;
 
-    x = canvas.width / 2 - 50;
+    updatePlayerMetrics();
+    x = canvas.width / 2 - playerWidth / 2;
+
+    playSound(sounds.gameStart);
+    startRunAudio();
+    updateStartOverlayButton();
+    updatePauseButton();
+    updateHud();
+}
+
+function drawStartOverlay() {
+    ctx.fillStyle = "rgba(8, 20, 28, 0.62)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 34px Space Grotesk";
+    ctx.fillText("READY TO DODGE", 58, 274);
+
+    ctx.font = "600 18px Space Grotesk";
+    ctx.fillText("Press Start to begin", 118, 312);
 }
 
 function drawGameOver() {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = "white";
-    ctx.font = "40px Arial";
-    ctx.fillText("GAME OVER", 60, 280);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 40px Space Grotesk";
+    ctx.fillText("GAME OVER", 72, 280);
 
-    ctx.font = "20px Arial";
-    ctx.fillText("Press Enter to Restart", 70, 320);
+    ctx.font = "600 20px Space Grotesk";
+    ctx.fillText("Press Enter to Restart", 82, 320);
+}
+
+function drawPauseOverlay() {
+    ctx.fillStyle = "rgba(8, 20, 28, 0.55)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 38px Space Grotesk";
+    ctx.fillText("PAUSED", 120, 290);
+
+    ctx.font = "600 18px Space Grotesk";
+    ctx.fillText("Tap Resume to continue", 110, 326);
+}
+
+function drawStoppedOverlay() {
+    ctx.fillStyle = "rgba(8, 20, 28, 0.65)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 34px Space Grotesk";
+    ctx.fillText("GAME STOPPED", 82, 286);
+
+    ctx.font = "600 18px Space Grotesk";
+    ctx.fillText("Press Enter to start a new run", 85, 323);
+}
+
+function drawBackground() {
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, "#163a4f");
+    grad.addColorStop(1, "#0b1f2d");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+    ctx.lineWidth = 1;
+    for (let i = 40; i < canvas.height; i += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, i + (score % 40));
+        ctx.lineTo(canvas.width, i + (score % 40));
+        ctx.stroke();
+    }
+}
+
+function drawPlayer() {
+    playerBob += 0.08;
+    const bobOffset = Math.sin(playerBob) * 1.5;
+    const px = x;
+    const py = y + bobOffset;
+    const radius = Math.min(10, playerHeight * 0.35);
+
+    const bodyGradient = ctx.createLinearGradient(px, py, px, py + playerHeight);
+    bodyGradient.addColorStop(0, "#2ef2bd");
+    bodyGradient.addColorStop(1, "#0ca478");
+
+    ctx.shadowColor = "rgba(46, 242, 189, 0.4)";
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = bodyGradient;
+
+    ctx.beginPath();
+    ctx.moveTo(px + radius, py);
+    ctx.lineTo(px + playerWidth - radius, py);
+    ctx.quadraticCurveTo(px + playerWidth, py, px + playerWidth, py + radius);
+    ctx.lineTo(px + playerWidth, py + playerHeight - radius);
+    ctx.quadraticCurveTo(px + playerWidth, py + playerHeight, px + playerWidth - radius, py + playerHeight);
+    ctx.lineTo(px + radius, py + playerHeight);
+    ctx.quadraticCurveTo(px, py + playerHeight, px, py + playerHeight - radius);
+    ctx.lineTo(px, py + radius);
+    ctx.quadraticCurveTo(px, py, px + radius, py);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = "rgba(7, 57, 56, 0.58)";
+    ctx.fillRect(px + playerWidth * 0.18, py + playerHeight - 6, playerWidth * 0.64, 4);
+}
+
+function drawBlocks() {
+    for (let block of blocks) {
+        const theme = fireballThemes[block.themeIndex] || fireballThemes[0];
+        const cx = block.x + block.radius;
+        const cy = block.y + block.radius;
+        const tailLength = block.height * 1.55;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(block.rotation);
+
+        const tailGradient = ctx.createLinearGradient(0, block.radius * 0.2, 0, -tailLength);
+        tailGradient.addColorStop(0, theme.tail[0]);
+        tailGradient.addColorStop(0.45, theme.tail[1]);
+        tailGradient.addColorStop(1, theme.tail[2]);
+
+        ctx.fillStyle = tailGradient;
+        ctx.beginPath();
+        ctx.moveTo(-block.radius * 0.52, block.radius * 0.3);
+        ctx.quadraticCurveTo(0, -tailLength * 0.86, block.radius * 0.52, block.radius * 0.3);
+        ctx.closePath();
+        ctx.fill();
+
+        const fireballGradient = ctx.createRadialGradient(
+            -block.radius * 0.2,
+            -block.radius * 0.25,
+            block.radius * 0.12,
+            0,
+            0,
+            block.radius
+        );
+        fireballGradient.addColorStop(0, theme.core[0]);
+        fireballGradient.addColorStop(0.4, theme.core[1]);
+        fireballGradient.addColorStop(0.72, theme.core[2]);
+        fireballGradient.addColorStop(1, theme.core[3]);
+
+        ctx.shadowColor = theme.glow;
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = fireballGradient;
+
+        ctx.beginPath();
+        ctx.arc(0, 0, block.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = theme.highlight;
+        ctx.beginPath();
+        ctx.arc(-block.radius * 0.26, -block.radius * 0.24, block.radius * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = theme.ring;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, block.radius * 0.82, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.restore();
+    }
 }
 
 function loop() {
-    if(gameOver){
-        if (keys["Enter"]) {
-            resetGame();
+    if (!gameStarted) {
+        drawBackground();
+        if (gameStopped) {
+            drawStoppedOverlay();
+        } else {
+            drawStartOverlay();
         }
+        requestAnimationFrame(loop);
+        return;
+    }
 
+    if(gameOver){
         drawGameOver();
         requestAnimationFrame(loop);
         return;
@@ -90,43 +626,66 @@ function loop() {
     player.x = x;
     player.y = y;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBackground();
+
+    if (gamePaused) {
+        drawPlayer();
+        drawBlocks();
+        drawHud();
+        drawPauseOverlay();
+        requestAnimationFrame(loop);
+        return;
+    }
 
     if(Math.random() < 0.02){
         spawnBlock();
     }
 
-    if(keys["ArrowLeft"] && x>0){
-        x-=5;
+    if((keys["ArrowLeft"] || keys["a"] || keys["A"]) && x > 0){
+        x -= playerSpeed;
     }
-    if(keys["ArrowRight"] && x+100 < canvas.width){
-        x+=5;
+    if((keys["ArrowRight"] || keys["d"] || keys["D"]) && x + playerWidth < canvas.width){
+        x += playerSpeed;
     }
 
     for(let block of blocks){
         block.y += block.speed;
+        block.rotation += block.spin;
+    }
 
+    ensureEscapeLane();
+
+    for(let block of blocks){
         if(isColliding(player, block)){
             gameOver = true;
             bestScore = Math.max(bestScore, score);
+            playSound(sounds.hit);
+            playSound(sounds.gameOver);
+            stopRunAudio();
+            break;
         }
     }
 
     blocks = blocks.filter(block => block.y < canvas.height);
 
     score++;
-
-    ctx.fillStyle = "lime";
-    ctx.fillRect(x, y, 100, 100);
-
-    ctx.fillStyle = "red";
-    for(let block of blocks){
-        ctx.fillRect(block.x, block.y, block.width, block.height);
+    if (score % 25 === 0) {
+        pulseScore();
     }
 
+    drawPlayer();
+    drawBlocks();
+
     drawHud();
+    updateHud();
 
     requestAnimationFrame(loop);
 }
 
+updateMusicButton();
+updateStartOverlayButton();
+updatePauseButton();
+updatePlayerMetrics();
+x = canvas.width / 2 - playerWidth / 2;
+updateHud();
 loop();

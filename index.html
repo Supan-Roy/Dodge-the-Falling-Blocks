@@ -4,9 +4,458 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dodge the Falling Blocks</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        :root {
+            --bg-top: #f6fbff;
+            --bg-bottom: #dff4f1;
+            --panel: rgba(255, 255, 255, 0.82);
+            --panel-border: rgba(19, 80, 88, 0.2);
+            --text-main: #09353a;
+            --text-soft: #406165;
+            --accent: #0da27e;
+            --accent-strong: #09735d;
+            --warm: #ff8f4f;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100dvh;
+            display: grid;
+            place-items: center;
+            padding: 0;
+            font-family: "Space Grotesk", sans-serif;
+            color: var(--text-main);
+            background: linear-gradient(170deg, var(--bg-top), var(--bg-bottom));
+            position: relative;
+        }
+
+        body::before,
+        body::after {
+            content: "";
+            position: absolute;
+            width: 320px;
+            height: 320px;
+            border-radius: 50%;
+            filter: blur(14px);
+            z-index: 0;
+            animation: float 10s ease-in-out infinite;
+        }
+
+        body::before {
+            top: -100px;
+            left: -70px;
+            background: radial-gradient(circle at 30% 30%, #9ee8d5, transparent 70%);
+        }
+
+        body::after {
+            right: -90px;
+            bottom: -120px;
+            background: radial-gradient(circle at 60% 60%, #ffc7a3, transparent 70%);
+            animation-delay: -5s;
+        }
+
+        .game-shell {
+            width: min(100vw, 460px);
+            max-height: 100dvh;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 12px;
+            box-shadow: 0 16px 42px rgba(8, 54, 59, 0.18);
+            backdrop-filter: blur(4px);
+            position: relative;
+            z-index: 1;
+            animation: enter 650ms ease;
+            overflow: hidden;
+        }
+
+        .top-bar {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: end;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            width: min(100%, 170px);
+        }
+
+        .title-wrap h1 {
+            margin: 0;
+            font-family: "Sora", sans-serif;
+            font-size: clamp(0.95rem, 2.9vw, 1.25rem);
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+        }
+
+        .title-wrap p {
+            margin: 4px 0 0;
+            color: var(--text-soft);
+            font-size: 0.9rem;
+        }
+
+        .title-wrap {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(236, 247, 245, 0.9));
+            border: 1px solid rgba(9, 53, 58, 0.12);
+            border-radius: 12px;
+            padding: 8px 10px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+        }
+
+        .control-btn {
+            border: none;
+            background: linear-gradient(135deg, var(--accent), #20c59a);
+            color: #ffffff;
+            font-weight: 700;
+            font-family: "Space Grotesk", sans-serif;
+            font-size: 1rem;
+            letter-spacing: 0.02em;
+            border-radius: 12px;
+            padding: 0;
+            width: 46px;
+            min-height: 36px;
+            display: grid;
+            place-items: center;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(13, 162, 126, 0.35);
+            transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+            white-space: nowrap;
+            line-height: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .control-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 24px rgba(13, 162, 126, 0.42);
+            filter: brightness(1.03);
+        }
+
+        .control-btn:active {
+            transform: translateY(1px);
+        }
+
+        .pause-btn {
+            background: linear-gradient(135deg, #e88b37, #ffad4b);
+            box-shadow: 0 8px 20px rgba(232, 139, 55, 0.35);
+        }
+
+        .pause-btn:hover {
+            box-shadow: 0 12px 24px rgba(232, 139, 55, 0.42);
+        }
+
+        .stop-btn {
+            background: linear-gradient(135deg, #d75454, #eb6c6c);
+            box-shadow: 0 8px 20px rgba(215, 84, 84, 0.35);
+        }
+
+        .stop-btn:hover {
+            box-shadow: 0 12px 24px rgba(215, 84, 84, 0.42);
+        }
+
+        .control-btn:focus-visible {
+            outline: 2px solid rgba(9, 115, 93, 0.45);
+            outline-offset: 1px;
+        }
+
+        .icon {
+            position: relative;
+            display: inline-block;
+        }
+
+        .icon-stop {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            background: #ffffff;
+        }
+
+        .icon-pause {
+            width: 14px;
+            height: 14px;
+        }
+
+        .icon-pause::before,
+        .icon-pause::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            width: 4px;
+            height: 14px;
+            border-radius: 1px;
+            background: #ffffff;
+        }
+
+        .icon-pause::before {
+            left: 1px;
+        }
+
+        .icon-pause::after {
+            right: 1px;
+        }
+
+        .icon-play {
+            width: 0;
+            height: 0;
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+            border-left: 13px solid #ffffff;
+            margin-left: 2px;
+            display: none;
+        }
+
+        .pause-btn.show-play .icon-pause {
+            display: none;
+        }
+
+        .pause-btn.show-play .icon-play {
+            display: inline-block;
+        }
+
+        .hud {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .stat {
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.78);
+            border: 1px solid rgba(9, 53, 58, 0.1);
+            padding: 10px 12px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        .stat-label {
+            color: var(--text-soft);
+            font-size: 0.8rem;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .stat-value {
+            font-size: 1.45rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .pulse {
+            animation: pulse 260ms ease;
+        }
+
+        .canvas-wrap {
+            border-radius: 18px;
+            padding: 8px;
+            background: linear-gradient(160deg, rgba(9, 53, 58, 0.08), rgba(9, 53, 58, 0.02));
+            border: 1px solid rgba(9, 53, 58, 0.14);
+            display: grid;
+            place-items: center;
+            position: relative;
+        }
+
+        .start-overlay-btn {
+            position: absolute;
+            left: 50%;
+            top: 68%;
+            transform: translate(-50%, -50%);
+            border: none;
+            border-radius: 14px;
+            min-width: 150px;
+            min-height: 44px;
+            padding: 10px 16px;
+            font-family: "Space Grotesk", sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            color: #ffffff;
+            background: linear-gradient(135deg, #0f90d5, #40b8f6);
+            box-shadow: 0 10px 24px rgba(15, 144, 213, 0.42);
+            cursor: pointer;
+            z-index: 3;
+            transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+        }
+
+        .start-overlay-btn:hover {
+            transform: translate(-50%, -51%);
+            filter: brightness(1.04);
+            box-shadow: 0 14px 28px rgba(15, 144, 213, 0.48);
+        }
+
+        .start-overlay-btn:active {
+            transform: translate(-50%, -49%);
+        }
+
+        canvas {
+            width: min(100%, 360px);
+            height: auto;
+            max-height: min(56vh, calc(100dvh - 240px));
+            display: block;
+            border-radius: 14px;
+            background: linear-gradient(#0d2233, #183a4e);
+            box-shadow: inset 0 -70px 120px rgba(8, 21, 30, 0.5);
+        }
+
+        .controls {
+            margin-top: 12px;
+            color: var(--text-soft);
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        .controls strong {
+            color: var(--accent-strong);
+        }
+
+        @keyframes float {
+            0%,
+            100% { transform: translateY(0); }
+            50% { transform: translateY(22px); }
+        }
+
+        @keyframes enter {
+            from {
+                opacity: 0;
+                transform: translateY(14px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes pulse {
+            from { transform: scale(1); }
+            50% { transform: scale(1.07); color: var(--warm); }
+            to { transform: scale(1); }
+        }
+
+        @media (max-width: 480px) {
+            .game-shell {
+                width: 100vw;
+                height: 100dvh;
+                max-height: 100dvh;
+                padding: 10px;
+                border-radius: 0;
+            }
+
+            .top-bar {
+                grid-template-columns: 1fr;
+                align-items: stretch;
+            }
+
+            .button-group {
+                width: 146px;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 10px;
+                justify-self: end;
+            }
+
+            .control-btn {
+                width: 38px;
+                font-size: 0.82rem;
+                padding: 0;
+                min-height: 30px;
+            }
+
+            .icon-stop {
+                width: 10px;
+                height: 10px;
+            }
+
+            .icon-pause {
+                width: 12px;
+                height: 12px;
+            }
+
+            .icon-pause::before,
+            .icon-pause::after {
+                width: 3px;
+                height: 12px;
+            }
+
+            .icon-play {
+                border-top: 7px solid transparent;
+                border-bottom: 7px solid transparent;
+                border-left: 11px solid #ffffff;
+                margin-left: 1px;
+            }
+
+            canvas {
+                width: min(100%, 320px);
+                max-height: min(52vh, calc(100dvh - 228px));
+            }
+
+            .controls {
+                font-size: 0.82rem;
+            }
+
+            .start-overlay-btn {
+                top: 60%;
+                min-width: 132px;
+                min-height: 40px;
+                font-size: 0.85rem;
+                padding: 8px 14px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <canvas id="game" width="400" height="600"></canvas>
+    <main class="game-shell">
+        <div class="top-bar">
+            <div class="title-wrap">
+                <h1>Dodge The Falling Blocks</h1>
+                <p>Stay alive, react fast, beat your best run.</p>
+            </div>
+            <div class="button-group">
+                <button id="musicToggle" class="control-btn" aria-label="Toggle background music">🔊</button>
+                <button id="pauseToggle" class="control-btn pause-btn" aria-label="Pause or resume game">
+                    <span class="icon icon-pause" aria-hidden="true"></span>
+                    <span class="icon icon-play" aria-hidden="true"></span>
+                </button>
+                <button id="stopGame" class="control-btn stop-btn" aria-label="Stop the game">
+                    <span class="icon icon-stop" aria-hidden="true"></span>
+                </button>
+            </div>
+        </div>
+
+        <section class="hud" aria-live="polite">
+            <div class="stat">
+                <div class="stat-label">Score</div>
+                <div id="scoreValue" class="stat-value">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Best</div>
+                <div id="bestScoreValue" class="stat-value">0</div>
+            </div>
+        </section>
+
+        <div class="canvas-wrap">
+            <canvas id="game" width="400" height="600"></canvas>
+            <button id="startOverlayButton" class="start-overlay-btn" aria-label="Start game">Start Game</button>
+        </div>
+
+        <p class="controls"><strong>Controls:</strong> Press Start, Enter, or Space to play. Press Enter or Space again to pause/resume. Use Arrow Left and Arrow Right to move.</p>
+    </main>
     <script src="game.js"></script>
 </body>
 </html>

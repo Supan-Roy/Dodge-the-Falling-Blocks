@@ -3,9 +3,11 @@ const ctx = canvas.getContext("2d");
 const scoreValue = document.getElementById("scoreValue");
 const bestScoreValue = document.getElementById("bestScoreValue");
 const startOverlayButton = document.getElementById("startOverlayButton");
+const makerTag = document.getElementById("makerTag");
 const musicToggle = document.getElementById("musicToggle");
 const pauseToggle = document.getElementById("pauseToggle");
 const stopGameButton = document.getElementById("stopGame");
+const difficultyButtons = document.querySelectorAll(".difficulty-btn");
 
 let playerWidth = 100;
 let playerHeight = 100;
@@ -20,6 +22,9 @@ let score = 0;
 let bestScore = 0;
 let musicEnabled = true;
 let playerBob = 0;
+let runElapsedMs = 0;
+let lastFrameTime = 0;
+let difficultyLevel = "low";
 
 let blocks = [];
 let keys = {};
@@ -108,6 +113,70 @@ function pickFireballThemeIndex(currentScore) {
     return phase;
 }
 
+const difficultyConfig = {
+    low: {
+        spawnRate: 0.018,
+        speedMultiplier: 0.92,
+        weirdMultiplier: 0.82,
+        weirdStartMs: 120000,
+        weirdRampMs: 180000,
+        weirdChanceEarly: 0.18,
+        weirdChanceLate: 0.3
+    },
+    mid: {
+        spawnRate: 0.022,
+        speedMultiplier: 1,
+        weirdMultiplier: 1,
+        weirdStartMs: 60000,
+        weirdRampMs: 170000,
+        weirdChanceEarly: 0.2,
+        weirdChanceLate: 0.34
+    },
+    high: {
+        spawnRate: 0.04,
+        speedMultiplier: 1.26,
+        weirdMultiplier: 1.38,
+        weirdStartMs: 10000,
+        weirdRampMs: 110000,
+        weirdChanceEarly: 0.38,
+        weirdChanceLate: 0.62
+    }
+};
+
+function getDifficultySettings() {
+    return difficultyConfig[difficultyLevel] || difficultyConfig.low;
+}
+
+function setDifficulty(level) {
+    if (!difficultyConfig[level]) {
+        return;
+    }
+
+    difficultyLevel = level;
+    difficultyButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.level === difficultyLevel);
+    });
+}
+
+function pickWeirdType() {
+    const weirdTypes = ["crystal", "void", "plasma"];
+    return weirdTypes[Math.floor(Math.random() * weirdTypes.length)];
+}
+
+function getWeirdSpawnChance() {
+    const settings = getDifficultySettings();
+
+    if (runElapsedMs < settings.weirdStartMs) {
+        return 0;
+    }
+
+    if (runElapsedMs < settings.weirdRampMs) {
+        return Math.min(0.75, settings.weirdChanceEarly * settings.weirdMultiplier);
+    }
+
+    return Math.min(0.85, settings.weirdChanceLate * settings.weirdMultiplier);
+}
+
 sounds.running.loop = true;
 sounds.running.volume = 0.35;
 sounds.gameOver.volume = 0.65;
@@ -148,7 +217,12 @@ function updatePauseButton() {
 }
 
 function updateStartOverlayButton() {
-    startOverlayButton.style.display = gameStarted ? "none" : "block";
+    const showStartOverlay = !gameStarted;
+    startOverlayButton.style.display = showStartOverlay ? "block" : "none";
+
+    if (makerTag) {
+        makerTag.style.display = showStartOverlay ? "block" : "none";
+    }
 }
 
 function updateHud() {
@@ -232,10 +306,22 @@ stopGameButton.addEventListener("click", () => {
     updateStartOverlayButton();
 });
 
+difficultyButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+        setDifficulty(button.dataset.level);
+    });
+});
+
 function spawnBlock() {
-    const size = 26 + Math.random() * 20;
+    const settings = getDifficultySettings();
+    const weird = Math.random() < getWeirdSpawnChance();
+    const size = weird ? 30 + Math.random() * 22 : 26 + Math.random() * 20;
     const radius = size / 2;
     const themeIndex = pickFireballThemeIndex(score);
+    const weirdType = weird ? pickWeirdType() : "fireball";
+    const movementType = weird
+        ? (Math.random() < 0.55 ? "zigzag" : "drifter")
+        : (Math.random() < 0.14 ? "drifter" : "straight");
 
     blocks.push({
         x: Math.random() * (canvas.width - size),
@@ -243,10 +329,16 @@ function spawnBlock() {
         width: size,
         height: size,
         radius,
-        speed: Math.min(6.6, 2 + score / 480),
+        speed: Math.min(8.2, (2 + score / 480) * settings.speedMultiplier),
         rotation: Math.random() * Math.PI * 2,
         spin: (Math.random() - 0.5) * 0.04,
-        themeIndex
+        themeIndex,
+        objectType: weirdType,
+        movementType,
+        drift: (Math.random() - 0.5) * (weird ? 1.8 : 0.55),
+        waveAmp: weird ? 0.95 + Math.random() * 1.45 : 0,
+        waveSpeed: weird ? 0.07 + Math.random() * 0.06 : 0,
+        wavePhase: Math.random() * Math.PI * 2
     });
 }
 
@@ -431,6 +523,8 @@ function drawHud() {
 function resetGame() {
     blocks = [];
     score = 0;
+    runElapsedMs = 0;
+    lastFrameTime = 0;
     gameStarted = true;
     gameOver = false;
     gamePaused = false;
@@ -556,6 +650,91 @@ function drawBlocks() {
         ctx.translate(cx, cy);
         ctx.rotate(block.rotation);
 
+        if (block.objectType === "crystal") {
+            ctx.shadowColor = "rgba(122, 242, 255, 0.6)";
+            ctx.shadowBlur = 14;
+            const crystalGradient = ctx.createLinearGradient(0, -block.radius, 0, block.radius);
+            crystalGradient.addColorStop(0, "#f4f8ff");
+            crystalGradient.addColorStop(0.45, "#6ee8ff");
+            crystalGradient.addColorStop(1, "#5a53d6");
+            ctx.fillStyle = crystalGradient;
+
+            ctx.beginPath();
+            ctx.moveTo(0, -block.radius);
+            ctx.lineTo(block.radius * 0.74, 0);
+            ctx.lineTo(0, block.radius);
+            ctx.lineTo(-block.radius * 0.74, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = "rgba(237, 252, 255, 0.9)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+            continue;
+        }
+
+        if (block.objectType === "void") {
+            ctx.shadowColor = "rgba(157, 77, 255, 0.58)";
+            ctx.shadowBlur = 16;
+
+            const voidGradient = ctx.createRadialGradient(0, 0, block.radius * 0.18, 0, 0, block.radius);
+            voidGradient.addColorStop(0, "#151429");
+            voidGradient.addColorStop(0.5, "#33265d");
+            voidGradient.addColorStop(1, "#0c0a17");
+            ctx.fillStyle = voidGradient;
+            ctx.beginPath();
+            ctx.arc(0, 0, block.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = "rgba(191, 119, 255, 0.9)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, block.radius * 0.82, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = "rgba(211, 157, 255, 0.62)";
+            ctx.beginPath();
+            ctx.arc(block.radius * 0.18, -block.radius * 0.2, block.radius * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            continue;
+        }
+
+        if (block.objectType === "plasma") {
+            ctx.shadowColor = "rgba(80, 255, 223, 0.58)";
+            ctx.shadowBlur = 15;
+            const plasmaGradient = ctx.createRadialGradient(0, 0, block.radius * 0.2, 0, 0, block.radius);
+            plasmaGradient.addColorStop(0, "#e9fff8");
+            plasmaGradient.addColorStop(0.45, "#74ffd4");
+            plasmaGradient.addColorStop(1, "#149f8e");
+            ctx.fillStyle = plasmaGradient;
+
+            ctx.beginPath();
+            for (let i = 0; i < 9; i++) {
+                const angle = (Math.PI * 2 * i) / 9;
+                const bulge = i % 2 === 0 ? 1.05 : 0.78;
+                const px = Math.cos(angle) * block.radius * bulge;
+                const py = Math.sin(angle) * block.radius * bulge;
+                if (i === 0) {
+                    ctx.moveTo(px, py);
+                } else {
+                    ctx.lineTo(px, py);
+                }
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = "rgba(214, 255, 245, 0.85)";
+            ctx.lineWidth = 1.3;
+            ctx.stroke();
+            ctx.restore();
+            continue;
+        }
+
         const tailGradient = ctx.createLinearGradient(0, block.radius * 0.2, 0, -tailLength);
         tailGradient.addColorStop(0, theme.tail[0]);
         tailGradient.addColorStop(0.45, theme.tail[1]);
@@ -605,8 +784,9 @@ function drawBlocks() {
     }
 }
 
-function loop() {
+function loop(timestamp = performance.now()) {
     if (!gameStarted) {
+        lastFrameTime = timestamp;
         drawBackground();
         if (gameStopped) {
             drawStoppedOverlay();
@@ -618,6 +798,7 @@ function loop() {
     }
 
     if(gameOver){
+        lastFrameTime = timestamp;
         drawGameOver();
         requestAnimationFrame(loop);
         return;
@@ -629,6 +810,7 @@ function loop() {
     drawBackground();
 
     if (gamePaused) {
+        lastFrameTime = timestamp;
         drawPlayer();
         drawBlocks();
         drawHud();
@@ -637,7 +819,14 @@ function loop() {
         return;
     }
 
-    if(Math.random() < 0.02){
+    if (!lastFrameTime) {
+        lastFrameTime = timestamp;
+    }
+    const deltaMs = Math.min(60, Math.max(0, timestamp - lastFrameTime));
+    lastFrameTime = timestamp;
+    runElapsedMs += deltaMs;
+
+    if (Math.random() < getDifficultySettings().spawnRate) {
         spawnBlock();
     }
 
@@ -651,6 +840,15 @@ function loop() {
     for(let block of blocks){
         block.y += block.speed;
         block.rotation += block.spin;
+        block.wavePhase += block.waveSpeed;
+
+        if (block.movementType === "zigzag") {
+            block.x += Math.sin(block.wavePhase) * block.waveAmp;
+        } else if (block.movementType === "drifter") {
+            block.x += block.drift;
+        }
+
+        block.x = Math.max(0, Math.min(canvas.width - block.width, block.x));
     }
 
     ensureEscapeLane();
@@ -685,6 +883,7 @@ function loop() {
 updateMusicButton();
 updateStartOverlayButton();
 updatePauseButton();
+setDifficulty("low");
 updatePlayerMetrics();
 x = canvas.width / 2 - playerWidth / 2;
 updateHud();

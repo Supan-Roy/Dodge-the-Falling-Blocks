@@ -35,6 +35,12 @@ let keys = {};
 const COUNTER_NAMESPACE = "dodge-supanroy-caretgames-v1";
 const COUNTER_TOTAL_PLAYS = "total_plays";
 const COUNTER_TOTAL_MINUTES = "total_play_minutes";
+const LOCAL_STATS_KEY = "dtfb-community-stats-local-v1";
+
+const localStats = {
+    plays: 0,
+    minutes: 0
+};
 
 const sounds = {
     gameStart: new Audio("Sound Effects/game-start.mp3"),
@@ -184,6 +190,58 @@ function updateCommunityStatsUI({ plays, minutes } = {}) {
     }
 }
 
+function persistLocalStats() {
+    try {
+        localStorage.setItem(LOCAL_STATS_KEY, JSON.stringify(localStats));
+    } catch {
+        // Ignore storage limitations.
+    }
+}
+
+function loadLocalStats() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(LOCAL_STATS_KEY) || "{}");
+        if (Number.isFinite(saved?.plays) && saved.plays >= 0) {
+            localStats.plays = saved.plays;
+        }
+        if (Number.isFinite(saved?.minutes) && saved.minutes >= 0) {
+            localStats.minutes = saved.minutes;
+        }
+    } catch {
+        // Use default local counters.
+    }
+}
+
+function incrementLocalStat(key) {
+    if (key === "plays") {
+        localStats.plays += 1;
+    }
+
+    if (key === "minutes") {
+        localStats.minutes += 1;
+    }
+
+    persistLocalStats();
+    updateCommunityStatsUI({ plays: localStats.plays, minutes: localStats.minutes });
+}
+
+function setStatFromRemote(key, value) {
+    if (!Number.isFinite(value)) {
+        return;
+    }
+
+    if (key === "plays") {
+        localStats.plays = Math.max(localStats.plays, value);
+    }
+
+    if (key === "minutes") {
+        localStats.minutes = Math.max(localStats.minutes, value);
+    }
+
+    persistLocalStats();
+    updateCommunityStatsUI({ plays: localStats.plays, minutes: localStats.minutes });
+}
+
 async function counterGetValue(key) {
     const url = `https://api.countapi.xyz/get/${COUNTER_NAMESPACE}/${key}`;
     const response = await fetch(url, { cache: "no-store" });
@@ -210,9 +268,10 @@ async function refreshCommunityStats() {
             counterGetValue(COUNTER_TOTAL_PLAYS),
             counterGetValue(COUNTER_TOTAL_MINUTES)
         ]);
-        updateCommunityStatsUI({ plays, minutes });
+        setStatFromRemote("plays", plays);
+        setStatFromRemote("minutes", minutes);
     } catch {
-        updateCommunityStatsUI({ plays: undefined, minutes: undefined });
+        updateCommunityStatsUI({ plays: localStats.plays, minutes: localStats.minutes });
     }
 }
 
@@ -230,11 +289,11 @@ function ensurePlayMinuteTicker() {
             return;
         }
 
+        incrementLocalStat("minutes");
+
         try {
             const minutes = await counterHitValue(COUNTER_TOTAL_MINUTES);
-            if (totalPlayMinutesEl) {
-                totalPlayMinutesEl.textContent = formatCounterValue(minutes);
-            }
+            setStatFromRemote("minutes", minutes);
         } catch {
             // Keep game responsive even if counter service is unavailable.
         }
@@ -242,11 +301,11 @@ function ensurePlayMinuteTicker() {
 }
 
 async function registerPlayIfNeeded() {
+    incrementLocalStat("plays");
+
     try {
         const plays = await counterHitValue(COUNTER_TOTAL_PLAYS);
-        if (totalPlayCountEl) {
-            totalPlayCountEl.textContent = formatCounterValue(plays);
-        }
+        setStatFromRemote("plays", plays);
     } catch {
         // Ignore counter failures and continue gameplay.
     }
@@ -978,6 +1037,8 @@ setDifficulty("low");
 updatePlayerMetrics();
 x = canvas.width / 2 - playerWidth / 2;
 updateHud();
+loadLocalStats();
+updateCommunityStatsUI({ plays: localStats.plays, minutes: localStats.minutes });
 refreshCommunityStats();
 ensurePlayMinuteTicker();
 loop();

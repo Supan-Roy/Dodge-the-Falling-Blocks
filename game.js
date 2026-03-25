@@ -36,6 +36,7 @@ const COUNTER_NAMESPACE = "dodge-supanroy-caretgames-v1";
 const COUNTER_TOTAL_PLAYS = "total_plays";
 const COUNTER_TOTAL_MINUTES = "total_play_minutes";
 const LOCAL_STATS_KEY = "dtfb-community-stats-local-v1";
+const BEST_SCORE_STORAGE_KEY = "dtfb-best-score-v1";
 const STATS_REFRESH_INTERVAL_MS = 30000;
 
 const localStats = {
@@ -291,17 +292,18 @@ async function flushPendingStats() {
     statsSyncInFlight = true;
 
     try {
-        while (pendingStats.plays > 0) {
-            const plays = await counterHitValue(COUNTER_TOTAL_PLAYS);
-            setStatFromRemote("plays", plays);
-            markPendingSynced("plays");
+        if (pendingStats.plays > 0) {
+            localStats.plays += pendingStats.plays;
+            pendingStats.plays = 0;
         }
 
-        while (pendingStats.minutes > 0) {
-            const minutes = await counterHitValue(COUNTER_TOTAL_MINUTES);
-            setStatFromRemote("minutes", minutes);
-            markPendingSynced("minutes");
+        if (pendingStats.minutes > 0) {
+            localStats.minutes += pendingStats.minutes;
+            pendingStats.minutes = 0;
         }
+
+        persistLocalStats();
+        renderCommunityStats();
     } catch {
         // Keep local queued increments for next sync attempt.
     } finally {
@@ -330,17 +332,8 @@ async function counterHitValue(key) {
 }
 
 async function refreshCommunityStats() {
-    try {
-        const [plays, minutes] = await Promise.all([
-            counterGetValue(COUNTER_TOTAL_PLAYS),
-            counterGetValue(COUNTER_TOTAL_MINUTES)
-        ]);
-        setStatFromRemote("plays", plays);
-        setStatFromRemote("minutes", minutes);
-        await flushPendingStats();
-    } catch {
-        renderCommunityStats();
-    }
+    await flushPendingStats();
+    renderCommunityStats();
 }
 
 function isActivePlayState() {
@@ -434,6 +427,32 @@ function updateHud() {
     bestScoreValue.textContent = bestScore;
 }
 
+function persistBestScore() {
+    try {
+        localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(bestScore));
+    } catch {
+        // Ignore storage limitations.
+    }
+}
+
+function loadBestScore() {
+    try {
+        const savedBest = Number(localStorage.getItem(BEST_SCORE_STORAGE_KEY));
+        if (Number.isFinite(savedBest) && savedBest >= 0) {
+            bestScore = Math.floor(savedBest);
+        }
+    } catch {
+        // Use default score when local storage is unavailable.
+    }
+}
+
+function syncBestScoreFromCurrentScore() {
+    if (score > bestScore) {
+        bestScore = score;
+        persistBestScore();
+    }
+}
+
 function pulseScore() {
     scoreValue.classList.remove("pulse");
     void scoreValue.offsetWidth;
@@ -498,6 +517,7 @@ stopGameButton.addEventListener("click", () => {
         return;
     }
 
+    syncBestScoreFromCurrentScore();
     gameStopped = true;
     gameStarted = false;
     gamePaused = false;
@@ -1062,7 +1082,7 @@ function loop(timestamp = performance.now()) {
     for(let block of blocks){
         if(isColliding(player, block)){
             gameOver = true;
-            bestScore = Math.max(bestScore, score);
+            syncBestScoreFromCurrentScore();
             playSound(sounds.hit);
             playSound(sounds.gameOver);
             stopRunAudio();
@@ -1092,6 +1112,7 @@ updatePauseButton();
 setDifficulty("low");
 updatePlayerMetrics();
 x = canvas.width / 2 - playerWidth / 2;
+loadBestScore();
 updateHud();
 loadLocalStats();
 renderCommunityStats();
